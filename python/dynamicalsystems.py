@@ -3,7 +3,7 @@ import pprint as pp
 import matplotlib.pyplot as plt
 from scipy.stats import special_ortho_group
 from scipy.integrate import solve_ivp
-
+import torch
 
 class DynamicalSystem:
     def __init__(self,state_size,time_steps,time,f,x0,beta,u=None):
@@ -27,16 +27,21 @@ class DynamicalSystem:
         self.x0 = x0
         # X is the states
         #self.X = np.zeros((self.state_size,self.time_steps),dtype='double')
-        self.f = f
         self.X, self.dX = self.solve()
-
+    def to_torch(self):
+        ret = { 'U' : torch.Tensor(self.X.T) , 'dU' : torch.Tensor(self.dX.T)}
+        if self.Z is not None:
+            ret['X'] = torch.Tensor(self.Z.T)
+            ret['dX'] = torch.Tensor(self.dZ.T)
+        return ret
     def solve(self):
         # time
         t = np.linspace(self.time[0],self.time[1],self.time_steps)
         # set inital condition
         soln = solve_ivp(self.f, self.time, self.x0, dense_output = True, rtol=1e-8, atol=1e-8)
-        
-        return soln.sol(t), 
+        x = soln.sol(t)
+        dx = np.array([self.f(t[i],x[:,i]) for i in range(0,t.shape[0]) ]).T
+        return x, dx
 
     def embed(self,n,mu=0,sigma=0,mu1=0,sigma1=0,mat='SO'):
         self.mat = mat
@@ -45,16 +50,21 @@ class DynamicalSystem:
         elif self.mat == 'RANDN':
             self.embed_mat = np.random.randn(n,self.state_size)
         # X_shape = (self.state_size,self.time_steps)
-        self.Z = np.dot(self.embed_mat[:,:self.state_size], self.X + sigma * np.random.randn(self.state_size,self.time_steps) + mu) + sigma1*np.random.randn(self.embed_mat.shape[0],self.time_steps) + mu1
+        def emb(w):
+            return np.dot(self.embed_mat[:,:self.state_size], w + sigma * np.random.randn(self.state_size,self.time_steps) + mu) + sigma1*np.random.randn(self.embed_mat.shape[0],self.time_steps) + mu1
+        self.Z = emb(self.X)
+        self.dZ = emb(self.dX)
     def unembed(self):
-        if self.mat == 'SO':
-            X = np.dot(self.Z.T,self.embed_mat[:,:self.state_size]).T
-        elif self.mat == 'RANDN':
-            pinv = np.linalg.pinv(np.dot(self.embed_mat.T,self.embed_mat)) #(m,m)
-            rinv = np.dot(self.embed_mat,pinv)
-            X = np.dot(self.Z.T,rinv).T
-        return {'X' : X,
-                'err' : np.sum(np.abs(X-self.X))}
+        def unemb(w):        
+            if self.mat == 'SO':
+                X = np.dot(w.T,self.embed_mat[:,:self.state_size]).T
+            elif self.mat == 'RANDN':
+                pinv = np.linalg.pinv(np.dot(self.embed_mat.T,self.embed_mat)) #(m,m)
+                rinv = np.dot(self.embed_mat,pinv)
+                X = np.dot(w.T,rinv).T
+        X = unemb(self.Z)
+        dX = unemb(self.dZ)
+        return {'X' : X, 'X_err' : np.sum(np.abs(X-self.X)), 'dX' : dX, 'dX_err' : np.sum(np.abs(dX-self.dX))}
 
 class Lorenz(DynamicalSystem):
     def __init__(self):
@@ -87,12 +97,11 @@ class SimplePendulum(DynamicalSystem):
     def __init__(self,g,l,mu,theta0):
         self.state_size = 2
         self.time_steps = 10000
-        self.time = (0,10)
+        self.time = (0,20)
         self.x0 = (theta0,0)
         self.beta = beta = (g,l,mu)
-        self.f = np.vectorize(_f)
         super().__init__(self.state_size,self.time_steps,self.time,self.f,self.x0,self.beta)
-    def _f(self,t,X):
+    def f(self,t,X):
         theta, theta_dot = X
         return np.array([ theta_dot, -self.beta[0] / self.beta[1] * np.sin(theta) - self.beta[2] * theta_dot ])
     def get_xy(self):
