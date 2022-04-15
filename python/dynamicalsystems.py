@@ -28,14 +28,15 @@ class DynamicalSystem:
         # X is the states
         #self.X = np.zeros((self.state_size,self.time_steps),dtype='double')
         self.f = f
-        self.X = self.solve()
+        self.X, self.dX = self.solve()
 
     def solve(self):
         # time
         t = np.linspace(self.time[0],self.time[1],self.time_steps)
         # set inital condition
         soln = solve_ivp(self.f, self.time, self.x0, dense_output = True, rtol=1e-8, atol=1e-8)
-        return soln.sol(t)
+        
+        return soln.sol(t), 
 
     def embed(self,n,mu=0,sigma=0,mu1=0,sigma1=0,mat='SO'):
         self.mat = mat
@@ -89,8 +90,9 @@ class SimplePendulum(DynamicalSystem):
         self.time = (0,10)
         self.x0 = (theta0,0)
         self.beta = beta = (g,l,mu)
+        self.f = np.vectorize(_f)
         super().__init__(self.state_size,self.time_steps,self.time,self.f,self.x0,self.beta)
-    def f(self,t,X):
+    def _f(self,t,X):
         theta, theta_dot = X
         return np.array([ theta_dot, -self.beta[0] / self.beta[1] * np.sin(theta) - self.beta[2] * theta_dot ])
     def get_xy(self):
