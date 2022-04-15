@@ -96,8 +96,8 @@ class Lorenz(DynamicalSystem):
 class SimplePendulum(DynamicalSystem):
     def __init__(self,g,l,mu,theta0):
         self.state_size = 2
-        self.time_steps = 10000
-        self.time = (0,20)
+        self.time_steps = 1000
+        self.time = (0,10)
         self.x0 = (theta0,0)
         self.beta = beta = (g,l,mu)
         super().__init__(self.state_size,self.time_steps,self.time,self.f,self.x0,self.beta)
