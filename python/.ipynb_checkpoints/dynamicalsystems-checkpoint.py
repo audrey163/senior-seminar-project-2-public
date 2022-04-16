@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import special_ortho_group
 from scipy.integrate import solve_ivp
 import torch
+from torch.utils.data import Dataset, DataLoader
 
 class DynamicalSystem:
     def __init__(self,state_size,time_steps,time,f,x0,beta,u=None):
@@ -28,12 +29,7 @@ class DynamicalSystem:
         # X is the states
         #self.X = np.zeros((self.state_size,self.time_steps),dtype='double')
         self.X, self.dX = self.solve()
-    def to_torch(self):
-        ret = { 'U' : torch.Tensor(self.X.T) , 'dU' : torch.Tensor(self.dX.T)}
-        if self.Z is not None:
-            ret['X'] = torch.Tensor(self.Z.T)
-            ret['dX'] = torch.Tensor(self.dZ.T)
-        return ret
+
     def solve(self):
         # time
         t = np.linspace(self.time[0],self.time[1],self.time_steps)
@@ -43,7 +39,7 @@ class DynamicalSystem:
         dx = np.array([self.f(t[i],x[:,i]) for i in range(0,t.shape[0]) ]).T
         return x, dx
 
-    def embed(self,n,mu=0,sigma=0,mu1=0,sigma1=0,mat='SO'):
+    def embed(self,n,mu=0,sigma=0,mu1=0,sigma1=0,mat='RANDN'):
         self.mat = mat
         if self.mat == 'SO':
             self.embed_mat = special_ortho_group.rvs(n)
@@ -66,6 +62,7 @@ class DynamicalSystem:
         dX = unemb(self.dZ)
         return {'X' : X, 'X_err' : np.sum(np.abs(X-self.X)), 'dX' : dX, 'dX_err' : np.sum(np.abs(dX-self.dX))}
 
+    
 class Lorenz(DynamicalSystem):
     def __init__(self):
         self.state_size = 3
@@ -96,7 +93,7 @@ class Lorenz(DynamicalSystem):
 class SimplePendulum(DynamicalSystem):
     def __init__(self,g,l,mu,theta0):
         self.state_size = 2
-        self.time_steps = 1000
+        self.time_steps = 10000
         self.time = (0,10)
         self.x0 = (theta0,0)
         self.beta = beta = (g,l,mu)
@@ -107,3 +104,19 @@ class SimplePendulum(DynamicalSystem):
     def get_xy(self):
         return np.array([ np.sin(self.X[0,:]), np.cos(self.X[0,:]) ])
     
+
+
+def get_training_data(embed_dim = 10):
+    dynamical_system = SimplePendulum(g=9.8,l=2,mu=0.5,theta0=np.pi/2)
+    dynamical_system.embed(n=embed_dim,mat='RANDN',mu=0,sigma=0) #embed the pendulum in a higer diminsional space with noise
+    return { 'X' : torch.Tensor(dynamical_system.Z.T) , 'dX' : torch.Tensor(dynamical_system.dZ.T)}
+class TrainDataset(Dataset):
+    def __init__(self):
+        data = get_training_data()
+        self.X = data['X']
+        self.dX = data['dX']
+        self.n_samples = data['X'].shape[0]
+    def __getitem__(self,index):
+        return self.X[index,:],self.dX[index,:]
+    def __len__(self):
+        return self.n_samples
