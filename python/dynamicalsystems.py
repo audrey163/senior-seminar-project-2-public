@@ -41,6 +41,7 @@ class DynamicalSystem:
 
     def embed(self,n,mu=0,sigma=0,mu1=0,sigma1=0,mat='RANDN'):
         self.mat = mat
+        np.random.seed(1)
         if self.mat == 'SO':
             self.embed_mat = special_ortho_group.rvs(n)
         elif self.mat == 'RANDN':
